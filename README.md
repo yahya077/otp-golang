@@ -1,12 +1,14 @@
 # otp-golang
 This is an OTP Auth package for GOLang. 
 
+<img width="539" alt="Screen Shot 2022-11-08 at 22 44 13" src="https://user-images.githubusercontent.com/46659611/200660217-ec4f1afa-a859-4baf-9a45-7967798af70a.png">
+
 ## ⚡️ Quick Start
 ```
 go get -u https://github.com/yahya077/otp-golang
 ```
 ## 📖 Prebuild Handlers
-
+Note: There is an available documentation with *[Postman API Documentation](https://documenter.getpostman.com/view/10956074/2s8YehSvcG)* 
 <table class="table">
   <thead>
     <tr>
