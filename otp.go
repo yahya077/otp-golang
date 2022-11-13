@@ -1,6 +1,7 @@
 package otp_golang
 
 import (
+	"errors"
 	"fmt"
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v4"
@@ -78,7 +79,6 @@ type ISmsProvider interface {
 }
 
 type IUserRepository interface {
-	VerifyOtp(phone string, code string) OtpCheckerResponse
 	Register(parser func(interface{}) error) error
 	Registered(phone string) bool
 }
@@ -138,9 +138,9 @@ func (a *Auth) loginHandler(c *fiber.Ctx) error {
 	phone := c.FormValue("phone")
 	code := c.FormValue("code")
 
-	valid := a.Config.OtpCodeRepository.Validate(phone, code)
+	otpCode, e := a.Config.OtpCodeRepository.Validate(phone, code)
 
-	if otpCheckerResponse.Authenticated = valid; otpCheckerResponse.Authenticated {
+	if otpCheckerResponse.Authenticated = e == nil; otpCheckerResponse.Authenticated {
 
 		otpCheckerResponse.Registered = a.Config.UserRepository.Registered(phone)
 
@@ -148,7 +148,7 @@ func (a *Auth) loginHandler(c *fiber.Ctx) error {
 			"registered": otpCheckerResponse.Registered,
 			"otp":        code,
 			"phone":      phone,
-			"exp":        otpCheckerResponse.Expiration,
+			"exp":        otpCode.ExpiredAt.Unix(),
 		}
 
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -224,9 +224,7 @@ func (a *Auth) authMiddleware(c *fiber.Ctx) error {
 				return c.SendStatus(fiber.StatusForbidden)
 			}
 
-			if !authMiddlewareHandler.IsTokenExpired() {
-				c.Next()
-			}
+			c.Next()
 		}
 	}
 	return c.SendStatus(fiber.StatusUnauthorized)
@@ -288,9 +286,20 @@ type OtpCodeRepository struct {
 	OtpCode OtpCode
 }
 
-func (repository OtpCodeRepository) Validate(phone string, otp string) bool {
+func (repository OtpCodeRepository) Validate(phone string, otp string) (OtpCode, error) {
+	var err error
+
 	result := repository.DB.Where("phone = ? AND code = ?", phone, otp).Last(&repository.OtpCode)
-	return result.Error == nil && time.Now().Before(repository.OtpCode.ExpiredAt)
+
+	if result.Error != nil {
+		err = errors.New("invalid Otp Code")
+	}
+
+	if time.Now().After(repository.OtpCode.ExpiredAt) {
+		err = errors.New("otp code expired")
+	}
+
+	return repository.OtpCode, err
 }
 
 func (repository OtpCodeRepository) Insert(phone string, code string, expiredAt time.Time) {
