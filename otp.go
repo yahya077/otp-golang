@@ -9,7 +9,6 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -104,7 +103,7 @@ func (a *Auth) Initialize() {
 		a.Config.RegisterHandler = a.registerHandler
 	}
 	if a.Config.AuthMiddleware == nil {
-		a.Config.AuthMiddleware = a.authMiddleware
+		a.Config.AuthMiddleware = AuthMiddleware
 	}
 	a.Config.OtpCodeRepository.DB = a.DB
 	a.SetRoutes()
@@ -114,7 +113,7 @@ func (a *Auth) SetRoutes() {
 	authRouter := a.App.Group("/auth")
 	authRouter.Post("/otp", a.Config.OtpHandler)
 	authRouter.Post("/login", a.Config.LoginHandler)
-	authRouter.Post("/register", a.authMiddleware, a.Config.RegisterHandler)
+	authRouter.Post("/register", a.Config.AuthMiddleware, a.Config.RegisterHandler)
 }
 
 func (a *Auth) SetSmsProvider(provider ISmsProvider) {
@@ -212,24 +211,6 @@ func (a *Auth) GetOtpPath() string {
 	return PathAuth + PathOtp
 }
 
-func (a *Auth) authMiddleware(c *fiber.Ctx) error {
-	var authMiddlewareHandler AuthMiddlewareHandler
-	c.ReqHeaderParser(&authMiddlewareHandler.Header)
-
-	if authMiddlewareHandler.HasBearer() {
-		authMiddlewareHandler.ParseToken()
-
-		if claims, ok := authMiddlewareHandler.GetMappedClaims(); ok {
-			if c.Path() == a.GetRegisterPath() && claims["registered"].(bool) {
-				return c.SendStatus(fiber.StatusForbidden)
-			}
-
-			c.Next()
-		}
-	}
-	return c.SendStatus(fiber.StatusUnauthorized)
-}
-
 // createOtpCode is a helper for creating six digits otp codes
 func createOtpCode() string {
 	min := 100000
@@ -238,43 +219,6 @@ func createOtpCode() string {
 	rand.Seed(time.Now().UnixNano())
 
 	return strconv.Itoa(rand.Intn(max-min) + min)
-}
-
-type AuthMiddlewareHandler struct {
-	Header HeaderBearer
-	Token  *jwt.Token
-	Claims jwt.MapClaims
-}
-
-func (a *AuthMiddlewareHandler) HasBearer() bool {
-	return strings.Contains(a.Header.Authorization, "Bearer")
-}
-
-func (a *AuthMiddlewareHandler) GetTokenString() string {
-	return strings.Replace(a.Header.Authorization, "Bearer ", "", -1)
-}
-
-func (a *AuthMiddlewareHandler) ParseToken() (*jwt.Token, error) {
-	var e error
-	a.Token, e = jwt.Parse(a.GetTokenString(), func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-
-		return []byte(os.Getenv("JWT_SECRET_KEY")), nil
-	})
-	return a.Token, e
-}
-
-func (a *AuthMiddlewareHandler) IsTokenExpired() bool {
-	return !time.Now().Before(a.Claims["exp"].(time.Time))
-}
-
-func (a *AuthMiddlewareHandler) GetMappedClaims() (jwt.MapClaims, bool) {
-	var ok bool
-	a.Claims, ok = a.Token.Claims.(jwt.MapClaims)
-	ok = a.Token.Valid
-	return a.Claims, ok
 }
 
 type GormRepository struct {
