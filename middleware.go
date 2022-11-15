@@ -18,7 +18,7 @@ func AuthMiddleware(c *fiber.Ctx) error {
 
 		if claims, ok := authMiddlewareHandler.GetMappedClaims(); ok {
 			c.Locals("claims", claims)
-			c.Next()
+			return c.Next()
 		}
 	}
 	return c.SendStatus(fiber.StatusUnauthorized)
