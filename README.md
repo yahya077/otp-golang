@@ -7,7 +7,7 @@ This is an OTP Auth package for GOLang.
 
 ## ⚡️ Quick Start
 ```
-go get -u https://github.com/yahya077/otp-golang
+go get -u github.com/yahya077/otp-golang
 ```
 ## 📖 Prebuild Handlers
 Note: There is an available documentation with *[Postman API Documentation](https://documenter.getpostman.com/view/10956074/2s8YehSvcG)* 
