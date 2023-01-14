@@ -51,6 +51,15 @@ Note: There is an available documentation with *[Postman API Documentation](http
       <td>✓</td>
       <td>Registers user by User Repository</td>
     </tr>
+    <tr>
+      <td>Get User Model</td>
+      <td>/auth/user</td>
+      <td>GET</td>
+      <td>GetUserHandler</td>
+      <td>AuthMiddleware</td>
+      <td>✓</td>
+      <td>Gets user by User Repository</td>
+    </tr>
   </tbody>
 </table>
 
