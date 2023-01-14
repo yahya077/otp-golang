@@ -17,6 +17,9 @@ const (
 	PathRegister = "/register"
 	PathLogin    = "/login"
 	PathOtp      = "/otp"
+	PathGetUser  = "/user"
+	LocalUser    = "user_model"
+	LocalClaims  = "claims"
 )
 
 type Auth struct {
@@ -29,7 +32,8 @@ type Config struct {
 	OtpHandler        fiber.Handler
 	LoginHandler      fiber.Handler
 	RegisterHandler   fiber.Handler
-	AuthMiddleware    func(c *fiber.Ctx) error
+	GetUserHandler    fiber.Handler
+	AuthMiddleware    fiber.Handler
 	SmsProvider       ISmsProvider
 	UserRepository    IUserRepository
 	OtpCodeRepository OtpCodeRepository
@@ -80,6 +84,7 @@ type ISmsProvider interface {
 type IUserRepository interface {
 	Register(parser func(interface{}) error) error
 	Registered(phone string) bool
+	FindByPhone(phone string) (interface{}, error)
 }
 
 func New(app *fiber.App, db *gorm.DB, config Config) *Auth {
@@ -88,7 +93,6 @@ func New(app *fiber.App, db *gorm.DB, config Config) *Auth {
 		DB:     db,
 		Config: config,
 	}
-	auth.Initialize()
 	return auth
 }
 
@@ -105,15 +109,19 @@ func (a *Auth) Initialize() {
 	if a.Config.AuthMiddleware == nil {
 		a.Config.AuthMiddleware = AuthMiddleware
 	}
+	if a.Config.GetUserHandler == nil {
+		a.Config.GetUserHandler = a.getUserHandler
+	}
 	a.Config.OtpCodeRepository.DB = a.DB
 	a.SetRoutes()
 }
 
 func (a *Auth) SetRoutes() {
 	authRouter := a.App.Group("/auth")
-	authRouter.Post("/otp", a.Config.OtpHandler)
-	authRouter.Post("/login", a.Config.LoginHandler)
-	authRouter.Post("/register", a.Config.AuthMiddleware, a.Config.RegisterHandler)
+	authRouter.Post(PathOtp, a.Config.OtpHandler)
+	authRouter.Post(PathLogin, a.Config.LoginHandler)
+	authRouter.Post(PathRegister, a.Config.AuthMiddleware, a.Config.RegisterHandler)
+	authRouter.Get(PathGetUser, a.Config.AuthMiddleware, a.Config.GetUserHandler)
 }
 
 func (a *Auth) SetSmsProvider(provider ISmsProvider) {
@@ -122,13 +130,6 @@ func (a *Auth) SetSmsProvider(provider ISmsProvider) {
 
 func (a *Auth) SetUserRepository(subject IUserRepository) {
 	a.Config.UserRepository = subject
-}
-
-func (a *Auth) SetOtpSender() {
-	authRouter := a.App.Group(PathAuth)
-	authRouter.Post(PathOtp, a.Config.OtpHandler)
-	authRouter.Post(PathLogin, a.Config.LoginHandler)
-	authRouter.Post(PathRegister, a.Config.RegisterHandler)
 }
 
 func (a *Auth) loginHandler(c *fiber.Ctx) error {
@@ -181,13 +182,23 @@ func (a *Auth) registerHandler(c *fiber.Ctx) error {
 	return c.JSON("registered user")
 }
 
+// getUserHandler gets user from db
+func (a *Auth) getUserHandler(c *fiber.Ctx) error {
+	claims := c.Locals("claims").(jwt.MapClaims)
+
+	if userData, e := a.Config.UserRepository.FindByPhone(claims["phone"].(string)); e == nil {
+		return c.JSON(userData)
+	}
+	return c.SendStatus(fiber.StatusNotFound)
+}
+
 // otpHandler will be creating and sending otp code
 func (a *Auth) otpHandler(c *fiber.Ctx) error {
 	phone := c.FormValue("phone")
 
 	otpCode := createOtpCode()
 
-	a.Config.OtpCodeRepository.Insert(phone, otpCode, time.Now().Add(time.Minute*2))
+	a.Config.OtpCodeRepository.Insert(phone, otpCode, time.Now().Add(time.Hour*72))
 
 	e := a.Config.SmsProvider.SendOtp(phone, otpCode)
 
@@ -209,6 +220,16 @@ func (a *Auth) GetLoginPath() string {
 
 func (a *Auth) GetOtpPath() string {
 	return PathAuth + PathOtp
+}
+
+func (a *Auth) GetUserHandler(ctx *fiber.Ctx) error {
+	claims := ctx.Locals(LocalClaims).(jwt.MapClaims)
+
+	if user, err := a.Config.UserRepository.FindByPhone(claims["phone"].(string)); err == nil {
+		ctx.Locals(LocalUser, user)
+	}
+
+	return ctx.SendStatus(fiber.StatusNotFound)
 }
 
 // createOtpCode is a helper for creating six digits otp codes

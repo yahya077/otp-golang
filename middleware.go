@@ -14,13 +14,18 @@ func AuthMiddleware(c *fiber.Ctx) error {
 	c.ReqHeaderParser(&authMiddlewareHandler.Header)
 
 	if authMiddlewareHandler.HasBearer() {
-		authMiddlewareHandler.ParseToken()
+		_, e := authMiddlewareHandler.ParseToken()
+
+		if e != nil {
+			return c.SendStatus(fiber.StatusUnauthorized)
+		}
 
 		if claims, ok := authMiddlewareHandler.GetMappedClaims(); ok {
-			c.Locals("claims", claims)
+			c.Locals(LocalClaims, claims)
 			return c.Next()
 		}
 	}
+
 	return c.SendStatus(fiber.StatusUnauthorized)
 }
 
